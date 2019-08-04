@@ -7,7 +7,7 @@ a julia wrapper of [NOMAD](https://www.gerad.ca/nomad/).
 ## Installation
 
 ```julia
-using Pkg; Pkg.add("https://github.com/jbrea/MeshAdaptiveDirectSearch.jl")
+using Pkg; Pkg.add(PackageSpec(url = "https://github.com/jbrea/MeshAdaptiveDirectSearch.jl"))
 ```
 
 ## Usage
