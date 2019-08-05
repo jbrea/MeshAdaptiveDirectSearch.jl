@@ -32,10 +32,14 @@ To get help, press `?` in the Julia REPL, then e.g. `minimize`.
 Audet, Charles and Dennis, J. E., "Mesh Adaptive Direct Search Algorithms for
 Constrained Optimization", 2006, [doi](http://dx.doi.org/10.1137/040603371)
 
-Audet, Charles and Ihaddadene, Amina and Le Digabel, Sébastien and Tribes,
-Christophe, "Robust optimization of noisy blackbox problems using the Mesh
-Adaptive Direct Search algorithm", 2018, [doi](http://dx.doi.org/10.1007/s11590-017-1226-6)
-
 Abramson, Mark A. and Audet, Charles and Dennis, J. E. and Le Digabel,
 Sébastien, "OrthoMADS: A Deterministic MADS Instance with Orthogonal
 Directions", 2009, [doi](http://dx.doi.org/10.1137/080716980).
+
+Audet, Charles and Ianni, Andrea and Le Digabel, Sébastien and Tribes,
+Christophe, "Reducing the Number of Function Evaluations in Mesh Adaptive Direct
+Search Algorithms", 2014, [doi](http://dx.doi.org/10.1137/120895056)
+
+Audet, Charles and Ihaddadene, Amina and Le Digabel, Sébastien and Tribes,
+Christophe, "Robust optimization of noisy blackbox problems using the Mesh
+Adaptive Direct Search algorithm", 2018, [doi](http://dx.doi.org/10.1007/s11590-017-1226-6)

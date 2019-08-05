@@ -2,7 +2,7 @@ module MeshAdaptiveDirectSearch
 
 using StaticArrays, Random, ElasticArrays, LinearAlgebra, Primes
 export MADS, LtMADS, OrthoMADS, RobustMADS, RobustLtMADS, RobustOrthoMADS,
-Silent, Progress, minimize
+Silent, Progress, minimize, NegReduction, NoReduction
 
 # TODO:
 # * QrMADS
@@ -142,14 +142,17 @@ function LtMADS(N; search = NoSearch(), mesh = LogMesh())
     MADS(mesh, search, LTDirectionGenerator(N))
 end
 """
-     LtMADS(N; search = NoSearch(), mesh = LogMesh())
+    OrthoMADS(N; search = NoSearch(), mesh = LogMesh(), reduction = NegReduction(N))
 
-Returns a `MADS` object with `poll = OrthoDirectionGenerator(N)` where `N` is the dimenionality of the problem.
-See Abramson et al. (2009), ORTHOMADS
+Returns a `MADS` object with `poll = OrthoDirectionGenerator(N)` where `N` is
+the dimenionality of the problem and `reduction` can be
+[`NegReduction(N)`](@ref) or [`NoReduction()`](@ref).
+See Abramson et al. (2009), ORTHOMADS and Audet et al. 2014 for NegReduction.
 """
 function OrthoMADS(N; search = NoSearch(),
-                      mesh = LogMesh())
-    MADS(mesh, search, OrthoDirectionGenerator(N))
+                      mesh = LogMesh(),
+                      reduction = NegReduction(N))
+    MADS(mesh, search, OrthoDirectionGenerator(N, reduction = reduction))
 end
 
 # implements robust mads, from Audet et al. 2018
@@ -185,6 +188,7 @@ end
                   mesh = LogMesh(), kernel = GaussKernel(1, 1), cache = Cache(N))
 
 Returns a `RobustMADS` object where `N` is the dimenionality of the problem.
+See Audet et al. 2018.
 """
 function RobustMADS(N; search = NoSearch(), poll = LTDirectionGenerator(N),
                     mesh = LogMesh(), kernel = GaussKernel(1, 1), cache = Cache(N))
@@ -245,6 +249,7 @@ function isvalid(cs, x)
 end
 
 # poll stage
+update!(::Any, ::Any) = nothing
 poll(m, f, constraints, x, fx) = poll(m, iterator(m.poll, ℓ(m.mesh)), Δ(m.mesh), f, constraints, x, fx)
 isnewincumbent(m::MADS, x, fx, oldfx) = fx < oldfx ? 1 : -1, x, fx
 @inline function poll(m, it, Δᵐ, f, constraints, x, fx)
@@ -254,7 +259,10 @@ isnewincumbent(m::MADS, x, fx, oldfx) = fx < oldfx ? 1 : -1, x, fx
         fnewx = f(newx)
 #         @show fnewx
         success, newincumbent, fnewx = isnewincumbent(m, newx, fnewx, fx)
-        success >= 0 && return (incumbent = newincumbent, fx = fnewx, hasimproved = success)
+        if success >= 0
+            update!(m.poll, newincumbent)
+            return (incumbent = newincumbent, fx = fnewx, hasimproved = success)
+        end
     end
     (incumbent = x, fx = fx, hasimproved = -1)
 end
@@ -289,17 +297,45 @@ function normalized_halton_direction(u, l)
     round.(Int, (α - .1) * q)
 end
 scaledhouseholder(q) = sum(q.^2) * I - 2 * q * q'
-mutable struct OrthoDirectionGenerator{N}
+"""
+    NoReduction()
+
+Implements no reduction for OrthoMADS.
+See Abramson et al. 2009
+"""
+struct NoReduction end
+struct NegReduction
+    oldincumbent::Vector{Float64}
+    w::Vector{Float64}
+end
+"""
+     NegReduction(N)
+
+Implements (suc, neg) reduction of OrthoMADS.
+See Audet et al. 2014.
+"""
+NegReduction(N) = NegReduction(zeros(N), zeros(N))
+mutable struct OrthoDirectionGenerator{N,R}
+    reduction::R
     t₀::Int
     ℓmax::Int
     tmax::Int
 end
-OrthoDirectionGenerator(N; t0 = N) = OrthoDirectionGenerator{N}(t0, 0, 0)
+function OrthoDirectionGenerator(N; t0 = N,
+                                    reduction = NegReduction(zeros(N), zeros(N)))
+    OrthoDirectionGenerator{N,typeof(reduction)}(reduction, t0, 0, 0)
+end
 iterator(g::OrthoDirectionGenerator, l) = OrthoDirectionIterator(g, l)
-struct OrthoDirectionIterator{N}
+function update!(g::OrthoDirectionGenerator{N,NegReduction}, x) where N
+    @. g.reduction.w = x - g.reduction.oldincumbent
+    @. g.reduction.oldincumbent = x
+    return nothing
+end
+struct OrthoDirectionIterator{N, R}
+    reduction::R
     H::Matrix{Float64}
 end
-function OrthoDirectionIterator(g::OrthoDirectionGenerator{N}, ℓ) where N
+function OrthoDirectionIterator(g::OrthoDirectionGenerator{N,R}, ℓ) where {N,R}
     if ℓ > g.ℓmax
         g.ℓmax = ℓ
         ℓ > g.tmax && (g.tmax = ℓ)
@@ -311,13 +347,31 @@ function OrthoDirectionIterator(g::OrthoDirectionGenerator{N}, ℓ) where N
     u = first(iterate(HaltonIterator{N}(), t))
     q = normalized_halton_direction(u, ℓ)
     H = scaledhouseholder(q)
-    OrthoDirectionIterator{N}(H)
+    if R === NegReduction && sum(abs2, g.reduction.w) == 0
+        reduction = NoReduction()
+    else
+        reduction = g.reduction
+    end
+    OrthoDirectionIterator{N,typeof(reduction)}(reduction, H)
 end
 length(::OrthoDirectionIterator{N}) where N = 2N
+length(::OrthoDirectionIterator{N,NegReduction}) where N = N + 1
 function iterate(it::OrthoDirectionIterator{N}, i = 1) where N
     i > 2N && return nothing
     i <= N && return @view(it.H[:, i]), i + 1
     return -@view(it.H[:, i - N]), i + 1
+end
+function iterate(it::OrthoDirectionIterator{N,NegReduction}, state = (1, zeros(N))) where N
+    i, sumd = state
+    i > N + 1 && return nothing
+    if i <= N
+        d = @view(it.H[:, i])
+        sign = dot(d, it.reduction.w) >= 0 ? 1 : -1
+        d .*= sign
+        return d, (i + 1, sumd .- d)
+    else
+        return sumd, (i + 1, sumd)
+    end
 end
 
 
@@ -373,6 +427,6 @@ function minimize(m::AbstractMADS, f, x0 = zeros(length(x0));
         end
     end
     (f = fincumbent, x = to(incumbent), stopping_reason = MaxIterations,
-     iterations = max_iteration)
+     iterations = max_iterations)
 end
 end # module
