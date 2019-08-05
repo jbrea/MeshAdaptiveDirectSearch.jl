@@ -7,7 +7,7 @@ a julia wrapper of [NOMAD](https://www.gerad.ca/nomad/).
 ## Installation
 
 ```julia
-using Pkg; Pkg.add(PackageSpec(url = "https://github.com/jbrea/MeshAdaptiveDirectSearch.jl"))
+] add https://github.com/jbrea/MeshAdaptiveDirectSearch.jl
 ```
 
 ## Usage
@@ -17,7 +17,10 @@ using MeshAdaptiveDirectSearch
 f(x) = (1 - exp(-sum(abs2, x))) * max(sum(abs2, x .- [30, 40]), sum(abs2, x .+ [30, 40]))
 noisyf(x) = f(x) + .1 * randn()
 
+?minimize
+
 minimize(LtMADS(2), f, [-2.1, 1.7], lowerbound = [-10, -10], upperbound = [10, 10])
+minimize(LtMADS(2), f, [-2.1, 1.7], lowerbound = [-10, -10], upperbound = [10, 10], constraints = [x -> sum(x) < .5])
 minimize(OrthoMADS(2), f, [-2.1, 1.7], lowerbound = [-10, -10], upperbound = [10, 10])
 minimize(RobustLtMADS(2), noisyf, [-2.1, 1.7], lowerbound = [-10, -10], upperbound = [10, 10])
 minimize(RobustOrthoMADS(2), noisyf, [-2.1, 1.7], lowerbound = [-10, -10], upperbound = [10, 10])

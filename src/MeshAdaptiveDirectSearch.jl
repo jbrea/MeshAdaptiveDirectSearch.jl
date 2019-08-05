@@ -236,12 +236,21 @@ function isnewincumbent(m::RobustMADS, x, fx, oldfx)
     success ? 1 : cachesuccess ? 0 : -1, m.cache.x[:, i], m.f[i]
 end
 
+# barrier
+function isvalid(cs, x)
+    for c in cs
+        c(x) || return false
+    end
+    return true
+end
+
 # poll stage
-poll(m, f, x, fx) = poll(m, iterator(m.poll, ℓ(m.mesh)), Δ(m.mesh), f, x, fx)
+poll(m, f, constraints, x, fx) = poll(m, iterator(m.poll, ℓ(m.mesh)), Δ(m.mesh), f, constraints, x, fx)
 isnewincumbent(m::MADS, x, fx, oldfx) = fx < oldfx ? 1 : -1, x, fx
-@inline function poll(m, it, Δᵐ, f, x, fx)
+@inline function poll(m, it, Δᵐ, f, constraints, x, fx)
     for v in it
         newx = clamp!(x .+ Δᵐ * v, -1., 1.)
+        isvalid(constraints, newx) || continue
         fnewx = f(newx)
 #         @show fnewx
         success, newincumbent, fnewx = isnewincumbent(m, newx, fnewx, fx)
@@ -252,8 +261,8 @@ end
 
 # search stage
 struct NoSearch end
-search(m, f, x, fx) = search(m.search, f, x, fx)
-search(::NoSearch, f, x, fx) = (incumbent = x, fx = fx, hasimproved = 0)
+search(m, f, constraints, x, fx) = search(m.search, f, constraints, x, fx)
+search(::NoSearch, f, constraints, x, fx) = (incumbent = x, fx = fx, hasimproved = 0)
 
 # implements OthoMADS, Abramson et al. 2009
 @inline function haltonnumber(base::Integer, index::Integer)::Float64
@@ -326,11 +335,14 @@ end
                    upperbound = ones(length(x0)),
                    max_iterations = 10^4,
                    min_mesh_size = eps(Float64)/2,
+                   constraints = [],
                    verbosity = Silent)
 
 Minimize function `f` with method `m`.
 For possible methods see [`LtMADS`](@ref), [`OrthoMADS`](@ref), [`MADS`](@ref),
 [`RobustLtMADS`](@ref), [`RobustOrthoMADS`](@ref), [`RobustMADS`](@ref).
+Constraints can be defined by boolean functions, e.g.
+`constraints = [x -> sum(x) > 1, x -> x[1]^2 < 3]`.
 Possible `verbosity`-levels are `Silent` or `Progress`.
 """
 function minimize(m::AbstractMADS, f, x0 = zeros(length(x0));
@@ -338,15 +350,18 @@ function minimize(m::AbstractMADS, f, x0 = zeros(length(x0));
                   upperbound = ones(length(x0)),
                   max_iterations = 10^4,
                   min_mesh_size = eps(Float64)/2,
-                  verbosity = Silent)
+                  verbosity = Silent,
+                  constraints = [])
+    isvalid(constraints, x0) || error("x0 = $x0 doesn't satisfy all constraints.")
     to, from = standardtransformation(lowerbound, upperbound)
     finternal = x -> f(to(x))
+    cinternal = [x -> c(to(x)) for c in constraints]
     incumbent = from(x0)
     fincumbent = finternal(incumbent)
     for k in 1:max_iterations
-        incumbent, fincumbent, i = search(m, finternal, incumbent, fincumbent)
+        incumbent, fincumbent, i = search(m, finternal, cinternal, incumbent, fincumbent)
         if i != 1
-            incumbent, fincumbent, i = poll(m, finternal, incumbent, fincumbent)
+            incumbent, fincumbent, i = poll(m, finternal, cinternal, incumbent, fincumbent)
         end
         update!(m.mesh, i)
         Δ(m.mesh) < min_mesh_size && return (f = fincumbent,
