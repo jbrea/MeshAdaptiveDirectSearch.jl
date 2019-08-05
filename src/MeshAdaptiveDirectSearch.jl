@@ -42,14 +42,13 @@ LogMesh(; τ = 4, Δᵐ = 1) = LogMesh(τ, Int(-log(τ, Δᵐ)))
 function update!(m::LogMesh, i)
     i == 0 && return m
     if i > 0
-        m.neglogΔᵐ == 0 && return m
         m.neglogΔᵐ -= 1
     else
         m.neglogΔᵐ += 1
     end
     m
 end
-Δ(m::LogMesh) = 1/m.τ^m.neglogΔᵐ
+Δ(m::LogMesh) = min(1, (1/m.τ)^m.neglogΔᵐ)
 ℓ(m::LogMesh) = m.neglogΔᵐ
 
 ####
@@ -67,7 +66,7 @@ function b(d::LTDirectionGenerator{N}, l::Int) where N
     d.b[l] = (i = i,
               v = SVector{N}([rand((-1,1)) * (k == i ? 2^l : (2^l - 1)) for k in 1:N]))
 end
-iterator(g::LTDirectionGenerator, l) = LTDirectionIterator(g, l)
+iterator(g::LTDirectionGenerator, l) = LTDirectionIterator(g, max(0, l))
 
 # Implements generation of the positive bias, box on p. 204 from Audet & Dennis 2006
 struct LTDirectionIterator{N,Np}
@@ -250,6 +249,7 @@ end
 
 # poll stage
 update!(::Any, ::Any) = nothing
+init!(::Any, ::Any) = nothing
 poll(m, f, constraints, x, fx) = poll(m, iterator(m.poll, ℓ(m.mesh)), Δ(m.mesh), f, constraints, x, fx)
 isnewincumbent(m::MADS, x, fx, oldfx) = fx < oldfx ? 1 : -1, x, fx
 @inline function poll(m, it, Δᵐ, f, constraints, x, fx)
@@ -314,18 +314,19 @@ end
 Implements (suc, neg) reduction of OrthoMADS.
 See Audet et al. 2014.
 """
-NegReduction(N) = NegReduction(zeros(N), zeros(N))
+NegReduction(N) = NegReduction(zeros(N), fill(NaN, N))
 mutable struct OrthoDirectionGenerator{N,R}
     reduction::R
     t₀::Int
     ℓmax::Int
     tmax::Int
 end
-function OrthoDirectionGenerator(N; t0 = N,
-                                    reduction = NegReduction(zeros(N), zeros(N)))
+function OrthoDirectionGenerator(N; t0 = 2*N,
+                                    reduction = NegReduction(N))
     OrthoDirectionGenerator{N,typeof(reduction)}(reduction, t0, 0, 0)
 end
 iterator(g::OrthoDirectionGenerator, l) = OrthoDirectionIterator(g, l)
+init!(g::OrthoDirectionGenerator{N,NegReduction}, x) where N = g.reduction.oldincumbent .= x
 function update!(g::OrthoDirectionGenerator{N,NegReduction}, x) where N
     @. g.reduction.w = x - g.reduction.oldincumbent
     @. g.reduction.oldincumbent = x
@@ -335,19 +336,22 @@ struct OrthoDirectionIterator{N, R}
     reduction::R
     H::Matrix{Float64}
 end
-function OrthoDirectionIterator(g::OrthoDirectionGenerator{N,R}, ℓ) where {N,R}
-    if ℓ > g.ℓmax
+function determine_t!(g::OrthoDirectionGenerator, ℓ)
+    if ℓ >= g.ℓmax
         g.ℓmax = ℓ
-        ℓ > g.tmax && (g.tmax = ℓ)
-        t = ℓ + g.t₀
+        ℓ  + g.t₀ > g.tmax && (g.tmax = ℓ + g.t₀)
+        return ℓ + g.t₀
     else
         g.tmax += 1
-        t = g.tmax
+        return g.tmax
     end
+end
+function OrthoDirectionIterator(g::OrthoDirectionGenerator{N,R}, ℓ) where {N,R}
+    t = determine_t!(g, ℓ)
     u = first(iterate(HaltonIterator{N}(), t))
     q = normalized_halton_direction(u, ℓ)
     H = scaledhouseholder(q)
-    if R === NegReduction && sum(abs2, g.reduction.w) == 0
+    if R === NegReduction && isnan(g.reduction.w[1])
         reduction = NoReduction()
     else
         reduction = g.reduction
@@ -368,7 +372,8 @@ function iterate(it::OrthoDirectionIterator{N,NegReduction}, state = (1, zeros(N
         d = @view(it.H[:, i])
         sign = dot(d, it.reduction.w) >= 0 ? 1 : -1
         d .*= sign
-        return d, (i + 1, sumd .- d)
+        sumd .-= d
+        return d, (i + 1, sumd)
     else
         return sumd, (i + 1, sumd)
     end
@@ -411,6 +416,7 @@ function minimize(m::AbstractMADS, f, x0 = zeros(length(x0));
     finternal = x -> f(to(x))
     cinternal = [x -> c(to(x)) for c in constraints]
     incumbent = from(x0)
+    init!(m.poll, incumbent)
     fincumbent = finternal(incumbent)
     for k in 1:max_iterations
         incumbent, fincumbent, i = search(m, finternal, cinternal, incumbent, fincumbent)
