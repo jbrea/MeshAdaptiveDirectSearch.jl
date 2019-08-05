@@ -135,7 +135,7 @@ end
 """
      LtMADS(N; search = NoSearch(), mesh = LogMesh())
 
-Returns a `MADS` object with `poll = LTDirectionGenerator(N)`.
+Returns a `MADS` object with `poll = LTDirectionGenerator(N)` where `N` is the dimenionality of the problem.
 See Audet & Dennis (2006), section 4, LTMADS
 """
 function LtMADS(N; search = NoSearch(), mesh = LogMesh())
@@ -144,7 +144,7 @@ end
 """
      LtMADS(N; search = NoSearch(), mesh = LogMesh())
 
-Returns a `MADS` object with `poll = OrthoDirectionGenerator(N)`.
+Returns a `MADS` object with `poll = OrthoDirectionGenerator(N)` where `N` is the dimenionality of the problem.
 See Abramson et al. (2009), ORTHOMADS
 """
 function OrthoMADS(N; search = NoSearch(),
@@ -184,7 +184,7 @@ end
     RobustMADS(N; search = NoSearch(), poll = LTDirectionGenerator(N),
                   mesh = LogMesh(), kernel = GaussKernel(1, 1), cache = Cache(N))
 
-Returns a `RobustMADS` object.
+Returns a `RobustMADS` object where `N` is the dimenionality of the problem.
 """
 function RobustMADS(N; search = NoSearch(), poll = LTDirectionGenerator(N),
                     mesh = LogMesh(), kernel = GaussKernel(1, 1), cache = Cache(N))
@@ -193,7 +193,7 @@ end
 """
     RobustLtMADS(N; kwargs...)
 
-Returns a `RobustMADS` object with `poll =  LTDirectionGenerator(N)`.
+Returns a `RobustMADS` object with `poll =  LTDirectionGenerator(N)` where `N` is the dimenionality of the problem.
 """
 function RobustLtMADS(N; kwargs...)
     RobustMADS(N, poll = LTDirectionGenerator(N), kwargs...)
@@ -201,7 +201,7 @@ end
 """
     RobustOrthoMADS(N; kwargs...)
 
-Returns a `RobustMADS` object with `poll =  OrthoDirectionGenerator(N)`.
+Returns a `RobustMADS` object with `poll =  OrthoDirectionGenerator(N)` where `N` is the dimenionality of the problem.
 """
 function RobustOrthoMADS(N; kwargs...)
     RobustMADS(N, poll = OrthoDirectionGenerator(N), kwargs...)
@@ -339,7 +339,7 @@ end
                    verbosity = Silent)
 
 Minimize function `f` with method `m`.
-For possible methods see [`LtMADS`](@ref), [`OrthoMADS`](@ref), [`MADS`](@ref),
+For possible methods `m` see [`LtMADS`](@ref), [`OrthoMADS`](@ref), [`MADS`](@ref),
 [`RobustLtMADS`](@ref), [`RobustOrthoMADS`](@ref), [`RobustMADS`](@ref).
 Constraints can be defined by boolean functions, e.g.
 `constraints = [x -> sum(x) > 1, x -> x[1]^2 < 3]`.
